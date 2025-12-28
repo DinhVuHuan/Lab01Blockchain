@@ -319,3 +319,5 @@ Dưới đây là danh sách **các file/ thư mục** chính trong repository v
 ---
 
 
+Chạy pBFT:
+python start_pbft_cluster.py
