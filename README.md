@@ -233,3 +233,89 @@ Trước khi chạy lại durability test, nên xóa dữ liệu cũ và logs đ
 - Sau cleanup, khởi `start_cluster.py` rồi chạy `tests/test_durability.py`.
 
 ---
+
+### 8. Tài liệu chi tiết các file & hàm (File reference) 🔎
+Dưới đây là danh sách **các file/ thư mục** chính trong repository và mô tả ngắn về **mục đích** cùng các hàm/ class quan trọng để giúp bạn nắm nhanh cấu trúc dự án.
+
+- `config.py`  
+  - Mục đích: cấu hình cluster (danh sách node, quorum) và các hằng thời gian RAFT (election timeout, heartbeat interval).  
+  - Biến quan trọng: `NODES`, `MAJORITY`, `ELECTION_TIMEOUT_MIN`, `ELECTION_TIMEOUT_MAX`, `HEARTBEAT_INTERVAL`.  
+  - Hàm: `random_election_timeout()` để lấy ngẫu nhiên timeout trong khoảng.
+
+- `raft_state.py`  
+  - Mục đích: nội dung state của một node RAFT (terms, votes, log, commit_index) và xử lý logic cốt lõi của RAFT.  
+  - Class `RaftState`:
+    - `reset_election_timeout(min_timeout, max_timeout)` — đặt deadline election mới.
+    - `election_timeout_reached()` — kiểm tra timeout.
+    - `become_follower(term, leader_id=None)`, `become_candidate()`, `become_leader()` — chuyển vai trò và cập nhật term.
+    - `on_request_vote(term, candidate_id)` — xử lý RequestVote RPC (trả vote_granted, term).
+    - `on_append_entries(...)` — xử lý AppendEntries RPC (heartbeat hoặc replication), áp log, cập nhật commit_index.
+    - `debug_status()` — in trạng thái nội bộ để debug.
+  - Ghi chú: hệ thống **ghi log** khi phát hiện term bất thường (>=1000); stack traces và trạng thái chi tiết được ghi ở mức DEBUG/WARNING vào `node-*.log` (không in trực tiếp ra stdout).
+
+- `raft_node.py`  
+  - Mục đích: thực thi một node RAFT đầy đủ (gRPC server, peer connections, election & heartbeat loops, replication).  
+  - Class `RaftNode` (hàm nổi bật):
+    - `__init__()` — khởi tạo node, KV store, status HTTP server, apply loop.
+    - `ping_peers()` — probe nhanh peer bằng AppendEntries để đánh giá reachable.
+    - `RequestVote(request, context)` / `AppendEntries(request, context)` — RPC handlers (nếu chạy trực tiếp như service).
+    - `replicate_to_peer(peer_id, ...)` — logic replicate logs tới một peer (fast-path + probe + repair), xử lý higher-term detection.
+    - `commit_by_majority()` — commit entries khi đa số đã ack.
+    - `apply_committed_loop()` — apply committed entries vào KV store (persist).
+    - `ClientAppend(request, context)` — leader-only handler cho client-submitted commands (append -> replicate -> wait commit).
+    - `election_loop()`, `start_election()` — tiến hành election.
+    - `heartbeat_loop()` — gửi heartbeat hoặc catch-up replication định kỳ.
+    - `start_status_server()` — chạy HTTP `/state` và `/admin` endpoints (disconnect/reconnect/clear/shutdown/setterm).
+  - Telemetry: `next_index`, `match_index`, `replication_errors`, `peer_failure_counts`, `last_heartbeat_ack` giúp debug replication health.
+
+- `raft_service.py`  
+  - Mục đích: wrapper gRPC service triển khai RPCs bằng cách sử dụng `RaftState` (được dùng khi dùng `RaftService` server class).
+  - `RaftService` triển khai: `RequestVote`, `AppendEntries`, `ClientAppend` (một số tối ưu replication và log append).
+
+- `raft_rpc.py`  
+  - Mục đích: implementation thay thế/đơn giản của các RPC (nhẹ hơn) — giữ các handler như `RequestVote` / `AppendEntries` theo kiểu trực tiếp tương tự `raft_service`.
+
+- `raft_client.py`  
+  - Mục đích: client tiện ích để gửi lệnh tới cluster (tìm leader + ClientAppend fallback AppendEntries).  
+  - Hàm chính: `find_leader()` (dùng HTTP `/state` để tìm leader đáng tin cậy), `send_command(command, max_attempts, backoff)` — thực thi command tới leader với retry, fallback khi cần.
+
+- `raft_cilent.py`  
+  - Mục đích: CLI tiện dụng (tên cũ/typo support) — gọi `raft_client.send_command` để gửi lệnh từ command line (đã sửa để dùng client đúng thay vì gửi trực tiếp AppendEntries không an toàn).
+
+- `kv_store.py`  
+  - Mục đích: lưu KV persist (file-backed JSON) và cung cấp `set/get` để đảm bảo durability across restarts.
+
+- `start_node.py`  
+  - Mục đích: khởi gRPC server cho 1 node trong 1 process (kèm healthcheck bind địa chỉ để tránh lỗi 0.0.0.0 trên Windows). Ghi stdout/stderr vào `node-<id>.log`.
+
+- `start_cluster.py` và `start_cluster_stagger.py`  
+  - Mục đích: script orchestrator để start 5 node (kèm preflight port check), in PIDs, đợi `/state` health, chờ leader stability; `--force` để bỏ qua preflight khi debug local.
+  - Chức năng thêm: in tail logs nếu process exit ngay, set `GRPC_VERBOSITY=error` cho child processes để giảm noise.
+
+- `run_node.py`, `run_smoke.py`  
+  - `run_node.py`: helper để chạy nhiều node trong cùng process (multi-thread) — hữu ích cho phát triển nhanh.  
+  - `run_smoke.py`: script chạy kịch bản smoke test (sanity checks).
+
+- `tools/`  (thư mục helper test/fixture):
+  - `tools/check_ports.py` — kiểm tra port 5001..5005 & 6001..6005 có bị chiếm.
+  - `tools/fault_tests.py` — helper test để probe states, tìm leader, kill/restart, simulate faults.
+  - `tools/admin.py` — wrapper nhỏ cho admin HTTP endpoints.
+  - `tools/inspect_states.py`, `run_fault_tests.py`, `debug_durability.py`, `stop_all_nodes.py`, `run_leader_crash.py` — các kịch bản hỗ trợ debugging & fault injection.
+
+- `tests/`  
+  - `tests/test_durability.py` — kịch bản E2E: start cluster, commit key, kill all, restart, verify key persisted. Tạo artifacts trên thất bại.
+  - `tests/test_replicate_functional.py` — kiểm tra replicate multi-node scenario (functional).
+  - `tests/test_replicate_unit.py` — unit tests cho `replicate_to_peer` và xử lý higher-term; test nhỏ giúp tách logic replicate.
+  - `tests/test_cli.py` — test client/CLI interactions.
+  - `tests/test_apply_local.py`, `tests/test_state.py` — các unit test khác cho apply loop và state transitions.
+
+- `proto/raft.proto` và `raft_pb2.py`, `raft_pb2_grpc.py`  
+  - Mô tả: định nghĩa protobuf cho các RPC RAFT (RequestVote, AppendEntries, LogEntry). `pb2` / `pb2_grpc` là files generated.
+
+- `node-*.log` & `artifacts/`  
+  - `node-*.log`: stdout/stderr của từng node (rất hữu ích khi debug start/term/replication issues).
+  - `artifacts/`: chứa snapshot logs và file chụp lỗi khi test thất bại (timestamped).
+
+---
+
+
