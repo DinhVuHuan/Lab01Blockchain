@@ -1,7 +1,3 @@
-# =====================================
-# RAFT CLIENT (TEST COMMAND REPLICATION)
-# =====================================
-
 import os
 import sys
 import grpc

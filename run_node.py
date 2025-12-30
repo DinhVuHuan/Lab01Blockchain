@@ -1,7 +1,3 @@
-# =====================================
-# RUN MULTI RAFT NODES (5 NODES LOCAL)
-# =====================================
-
 import threading
 import time
 from concurrent import futures

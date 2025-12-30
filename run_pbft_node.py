@@ -1,7 +1,6 @@
-# run_pbft_node.py
 from pbft_node import PBFTNode
 from pbft_block import Block
-
+ 
 def run():
     N = 5
     nodes = []

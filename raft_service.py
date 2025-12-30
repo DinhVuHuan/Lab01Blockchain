@@ -1,8 +1,3 @@
-# raft_service.py
-# =====================================
-# gRPC service for RAFT nodes
-# =====================================
-
 import time
 import threading
 

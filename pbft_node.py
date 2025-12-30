@@ -1,123 +1,115 @@
-# pbft_node.py
 from collections import defaultdict
+from typing import Any, List, Set
+
 from pbft_message import PRE_PREPARE, PREPARE, COMMIT, PBFTMessage
 
+
 class PBFTNode:
-    def __init__(self, node_id, total_nodes, is_primary=False, byzantine=False):
-        self.node_id = node_id
-        self.is_primary = is_primary
-        self.byzantine = byzantine
+    """PBFT protocol node (supports primary, byzantine, and durability tests)."""
 
-        self.f = (total_nodes - 1) // 3
-        self.peers = []
+    def __init__(
+        self, node_id: int, total_nodes: int, is_primary: bool = False, byzantine: bool = False
+    ) -> None:
+        self.node_id: int = node_id
+        self.is_primary: bool = is_primary
+        self.byzantine: bool = byzantine
 
-        # Lưu trữ votes
-        self.prepare_votes = defaultdict(set)
-        self.commit_votes = defaultdict(set)
-        
-        # Quản lý trạng thái để tránh gửi lặp lại
-        self.sent_commit = set()   # Các block hash mà node này đã gửi COMMIT message
-        self.committed_blocks = set() # Các block hash đã finalize
+        self.f: int = (total_nodes - 1) // 3
+        self.peers: List["PBFTNode"] = []
 
-        self.blacklist = set()
+        self.prepare_votes: defaultdict[str, Set[int]] = defaultdict(set)
+        self.commit_votes: defaultdict[str, Set[int]] = defaultdict(set)
 
-    def connect(self, peers):
+        self.sent_commit: Set[str] = set()
+        self.committed_blocks: Set[str] = set()
+
+        self.finalized_blocks: Set[str] = set()
+        self.blacklist: Set[int] = set()
+
+    # ================================
+    # Networking
+    # ================================
+
+    def connect(self, peers: List["PBFTNode"]) -> None:
         self.peers = peers
 
-    # ===== NETWORK =====
-    def broadcast(self, msg):
-        # Giả lập mạng: gửi tuần tự cho các peer
-        for p in self.peers:
-            if p.node_id != self.node_id: # Không gửi ngược lại cho chính mình qua mạng (xử lý nội bộ)
-                p.receive(msg)
+    def broadcast(self, msg: PBFTMessage) -> None:
+        for peer in self.peers:
+            if peer.node_id != self.node_id:
+                peer.receive(msg)
 
-    # ===== PROTOCOL =====
-    def start_pbft(self, block):
+    # ================================
+    # Protocol Entry
+    # ================================
+
+    def start_pbft(self, block: Any) -> None:
         if not self.is_primary:
             return
-        print(f"[Primary {self.node_id}] PRE-PREPARE {block}")
 
-        # Primary tự vote PREPARE cho chính mình
+        print(f"[Primary {self.node_id}] PRE-PREPARE {block}")
         self.prepare_votes[block.hash].add(self.node_id)
 
-        msg = PBFTMessage(PRE_PREPARE, block, self.node_id)
-        self.broadcast(msg)
+        self.broadcast(PBFTMessage(PRE_PREPARE, block, self.node_id))
+        self._check_prepare_quorum(block)
 
-    def receive(self, msg):
+    def receive(self, msg: PBFTMessage) -> None:
         if msg.sender in self.blacklist:
             return
 
-        if msg.type == PRE_PREPARE:
-            self.on_pre_prepare(msg)
-        elif msg.type == PREPARE:
-            self.on_prepare(msg)
-        elif msg.type == COMMIT:
-            self.on_commit(msg)
+        handlers = {
+            PRE_PREPARE: self._on_pre_prepare,
+            PREPARE: self._on_prepare,
+            COMMIT: self._on_commit,
+        }
 
-    # ===== PHASES =====
-    def on_pre_prepare(self, msg):
+        if msg.type in handlers:
+            handlers[msg.type](msg)
+
+    # ================================
+    # Phases
+    # ================================
+
+    def _on_pre_prepare(self, msg: PBFTMessage) -> None:
         if self.byzantine:
             print(f"[Node {self.node_id}] Byzantine ignore PRE-PREPARE")
             return
 
-        print(f"[Node {self.node_id}] PREPARE {msg.block}")
-        
-        # 1. Vote cho chính mình trước
-        self.prepare_votes[msg.block.hash].add(self.node_id)
-        
-        # 2. Broadcast PREPARE message
-        prepare = PBFTMessage(PREPARE, msg.block, self.node_id)
-        self.broadcast(prepare)
+        block = msg.block
+        print(f"[Node {self.node_id}] PREPARE {block}")
 
-        # Kiểm tra ngay (trường hợp mạng nhỏ hoặc logic đặc biệt), 
-        # nhưng thường Pre-prepare xong chưa đủ vote ngay để commit đâu.
-        self.check_prepare_threshold(msg.block)
+        self.prepare_votes[block.hash].add(self.node_id)
+        self.broadcast(PBFTMessage(PREPARE, block, self.node_id))
 
-    def on_prepare(self, msg):
-        h = msg.block.hash
+        self._check_prepare_quorum(block)
 
-        # Mô phỏng Byzantine: Gửi thông tin sai lệch hoặc im lặng
+    def _on_prepare(self, msg: PBFTMessage) -> None:
         if self.byzantine:
-            # Ở đây Byzantine node có thể gửi vote sai hash, 
-            # node trung thực sẽ lưu vào key khác trong defaultdict -> không ảnh hưởng key đúng.
-            return 
+            return
 
-        self.prepare_votes[h].add(msg.sender)
-        self.check_prepare_threshold(msg.block)
+        block = msg.block
+        self.prepare_votes[block.hash].add(msg.sender)
+        self._check_prepare_quorum(block)
 
-    def check_prepare_threshold(self, block):
+    def _check_prepare_quorum(self, block: Any) -> None:
         h = block.hash
-        # Điều kiện: 2f + 1 phiếu PREPARE
-        if len(self.prepare_votes[h]) >= 2 * self.f + 1:
-            # QUAN TRỌNG: Kiểm tra xem đã gửi COMMIT cho block này chưa?
-            if h not in self.sent_commit:
-                # Đánh dấu đã gửi để không spam
-                self.sent_commit.add(h)
-                
-                # 1. Tự vote COMMIT cho chính mình
-                self.commit_votes[h].add(self.node_id)
-                
-                # 2. Broadcast COMMIT message
-                commit_msg = PBFTMessage(COMMIT, block, self.node_id)
-                self.broadcast(commit_msg)
+        if len(self.prepare_votes[h]) >= 2 * self.f + 1 and h not in self.sent_commit:
+            self.sent_commit.add(h)
+            self.commit_votes[h].add(self.node_id)
+            self.broadcast(PBFTMessage(COMMIT, block, self.node_id))
+            self._check_commit_quorum(block)
 
-                # 3. Kiểm tra luôn xem đủ điều kiện commit chưa (phòng trường hợp mạng rất nhanh/nhỏ)
-                self.check_commit_threshold(block)
+    def _on_commit(self, msg: PBFTMessage) -> None:
+        block = msg.block
+        h = block.hash
 
-    def on_commit(self, msg):
-        h = msg.block.hash
-        
-        # Node chỉ xử lý commit nếu nó đã biết về block này (đã prepare)
         if h not in self.prepare_votes:
             return
 
         self.commit_votes[h].add(msg.sender)
-        self.check_commit_threshold(msg.block)
+        self._check_commit_quorum(block)
 
-    def check_commit_threshold(self, block):
+    def _check_commit_quorum(self, block: Any) -> None:
         h = block.hash
-        # Điều kiện: 2f + 1 phiếu COMMIT
-        if len(self.commit_votes[h]) >= 2 * self.f + 1:
-            if h not in self.committed_blocks:
-                self.committed_blocks.add(h)
-                print(f"[Node {self.node_id}] ✅ COMMIT {block}")
+        if len(self.commit_votes[h]) >= 2 * self.f + 1 and h not in self.finalized_blocks:
+            self.finalized_blocks.add(h)
+            print(f"[Node {self.node_id}] COMMIT {block}")
