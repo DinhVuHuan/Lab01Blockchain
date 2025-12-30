@@ -1,7 +1,3 @@
-# =====================================
-# RAFT STATE + LOG REPLICATION
-# =====================================
-
 import threading
 import time
 import random

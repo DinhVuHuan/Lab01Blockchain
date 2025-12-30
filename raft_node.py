@@ -1,7 +1,3 @@
-# =====================================
-# RAFT NODE + gRPC SERVER
-# =====================================
-
 import time
 import threading
 import grpc

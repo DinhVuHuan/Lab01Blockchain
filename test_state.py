@@ -1,6 +1,3 @@
-# test_state.py
-# Test logic RAFT state (KHÔNG gRPC)
-
 import time
 from raft_state import RaftState
 

@@ -1,6 +1,3 @@
-# start_node.py
-# Start a single RAFT node in its own process for persistent testing
-
 import sys
 import time
 import grpc
