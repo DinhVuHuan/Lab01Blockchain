@@ -126,6 +126,10 @@ Invoke-RestMethod "http://127.0.0.1:6001/admin/disconnect?peers=2,3"
   ```bash
   python -m pytest tests/test_cli.py::test_raft_cilent_cli_multword -q
   ```
+- Chạy pBFT:
+  ```
+  python start_pbft_cluster.py 
+  ```
 
 Ghi chú: Trước khi chạy `tests/test_durability.py`, đảm bảo không có tiến trình khác đang dùng các port mặc định (5001..5005 và 6001..6005). Sử dụng `python tools/check_ports.py` để kiểm tra port.
 
@@ -316,8 +320,78 @@ Dưới đây là danh sách **các file/ thư mục** chính trong repository v
   - `node-*.log`: stdout/stderr của từng node (rất hữu ích khi debug start/term/replication issues).
   - `artifacts/`: chứa snapshot logs và file chụp lỗi khi test thất bại (timestamped).
 
+- `pbft_block.py`
+  - Mục đích: định nghĩa **block tối giản** dùng cho các kịch bản kiểm tra PBFT (Practical Byzantine Fault Tolerance), chủ yếu để test durability và logic đồng thuận. Không chứa state phức tạp, chỉ giữ `height` và hash.  
+  - Class `Block`:  
+    - `__init__(height: int, prev_hash: str)` — khởi tạo block với `height` và hash của block trước (`prev_hash`). Tự động tính toán hash block hiện tại (`self.hash`).  
+    - `_compute_hash()` — tính toán SHA-256 hash dựa trên `height` và `prev_hash`.  
+    - `__repr__()` — hiển thị block dạng ngắn gọn, ví dụ `Block(height=3, hash=abc123)`, hữu ích khi debug logs.  
+
+- `pbft_message.py`
+  - Mục đích: định nghĩa các **message types** và **class message** cơ bản cho PBFT, dùng để broadcast block giữa các node trong quá trình test.  
+  - Message Types:  
+    - `PRE_PREPARE` — bước chuẩn bị trước khi commit block.  
+    - `PREPARE` — bước chuẩn bị đồng thuận từ đa số node.  
+    - `COMMIT` — bước commit block khi đa số node đồng thuận.  
+  - Class `PBFTMessage`:  
+    - `__init__(msg_type: str, block: Any, sender: int)` — khởi tạo message với loại (`msg_type`), block đính kèm (`block`) và node gửi (`sender`).  
+    - `__repr__()` — hiển thị dạng ngắn gọn: `PBFTMessage(type=PREPARE, height=3, sender=1)`, hữu ích khi debug logs. 
+
+- `pbft_node.py`
+  - Mục đích: triển khai node PBFT đơn giản, hỗ trợ các kịch bản **primary**, **Byzantine**, và **durability tests**. Dùng để simulate broadcast message, voting, và commit block giữa các node.  
+  - Class `PBFTNode`:
+    - `__init__(node_id: int, total_nodes: int, is_primary: bool = False, byzantine: bool = False)`  
+      - Khởi tạo node với `node_id`, tổng số node `total_nodes`, cờ `is_primary`, và cờ `byzantine`.  
+      - Tính toán `f = (n-1)//3` cho quorum BFT.  
+      - Khởi tạo các cấu trúc lưu votes (`prepare_votes`, `commit_votes`), block finalized, blacklist, v.v.  
+    - `connect(peers: List[PBFTNode])` — kết nối node với danh sách peers để broadcast message.  
+    - `broadcast(msg: PBFTMessage)` — gửi message đến tất cả peers (ngoại trừ bản thân).  
+    - `start_pbft(block: Any)` — entry point của primary node để bắt đầu PRE-PREPARE cho block mới.  
+    - `receive(msg: PBFTMessage)` — nhận message và dispatch tới handler tương ứng (`_on_pre_prepare`, `_on_prepare`, `_on_commit`).  
+    - `_on_pre_prepare(msg: PBFTMessage)` — xử lý PRE-PREPARE message, broadcast PREPARE tới peers, kiểm tra quorum.  
+    - `_on_prepare(msg: PBFTMessage)` — xử lý PREPARE message, cập nhật votes, kiểm tra quorum.  
+    - `_check_prepare_quorum(block: Any)` — kiểm tra nếu đã đủ quorum PREPARE (≥ 2f+1), gửi COMMIT và gọi `_check_commit_quorum`.  
+    - `_on_commit(msg: PBFTMessage)` — xử lý COMMIT message, cập nhật votes và kiểm tra quorum commit.  
+    - `_check_commit_quorum(block: Any)` — kiểm tra nếu đủ quorum COMMIT, đánh dấu block finalized và log thông tin.  
+- `start_pbft_cluster.py`:
+  - Mục đích: entry point để **khởi chạy một PBFT node** trong một process.
+
 ---
 
+### 9. Cấu trúc thư mục
+## 📂 Project Structure
 
-Chạy pBFT:
-python start_pbft_cluster.py
+```text
+LAB01BLOCKCHAIN/
+├── proto/                  
+├── scripts/                
+├── tests/                  
+├── artifacts/              
+├── data/                   
+├── tools/                  
+│
+├── pbft_*.py               
+│   ├── pbft_block.py       
+│   ├── pbft_message.py     
+│   └── pbft_node.py        
+│
+├── raft_*.py               
+│   ├── raft_node.py        
+│   ├── raft_client.py      
+│   ├── raft_state.py       
+│   └── raft_service.py     
+│
+├── start_*.py              
+│   ├── start_cluster.py    
+│   ├── start_pbft_cluster.py 
+│   └── start_cluster_stagger.py 
+│
+├── run_*.py                
+│   ├── run_node.py         
+│   └── run_smoke.py        
+│
+├── config.py               
+├── kv_store.py             
+├── probe_state.py          
+├── node-x.log              
+└── README.md               
