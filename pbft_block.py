@@ -1,15 +1,18 @@
-# pbft_block.py
 import hashlib
+from typing import Any
+
 
 class Block:
-    def __init__(self, height, prev_hash):
-        self.height = height
-        self.prev_hash = prev_hash
-        self.hash = self.compute_hash()
+    """Minimal immutable block for PBFT durability tests."""
 
-    def compute_hash(self):
-        s = f"{self.height}{self.prev_hash}"
-        return hashlib.sha256(s.encode()).hexdigest()
+    def __init__(self, height: int, prev_hash: str, override_hash=None) -> None:
+        self.height: int = height
+        self.prev_hash: str = prev_hash
+        self.hash = override_hash if override_hash else self.compute_hash()
 
-    def __repr__(self):
-        return f"Block(h={self.height}, hash={self.hash[:6]})"
+    def compute_hash(self) -> str:
+        payload = f"{self.height}{self.prev_hash}".encode()
+        return hashlib.sha256(payload).hexdigest()
+
+    def __repr__(self) -> str:
+        return f"Block(height={self.height}, hash={self.hash[:6]})"
