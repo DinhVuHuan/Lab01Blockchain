@@ -67,20 +67,20 @@ python tools/check_ports.py
 ### Khởi cụm 5 node
 python start_cluster.py
 
-Hoặc start 1 node debug
+#### Hoặc start 1 node debug
 python start_node.py 1
 
-Xác minh trạng thái node
+#### Xác minh trạng thái node
 Invoke-RestMethod "http://127.0.0.1:6001/state"
 
-Gửi lệnh ví dụ
+#### Gửi lệnh ví dụ
 python raft_client.py set example 100
 
-Mô phỏng fault
+#### Mô phỏng fault
  - tắt leader: /admin/shutdown
  - blackhole follower: /admin/disconnect
 
-Chạy test tổng quát, durability, pBFT
+### Chạy test tổng quát, durability, pBFT
 taskkill /F /IM python.exe
 Remove-Item -Recurse -Force .\data
 Remove-Item node-*.log -Force
@@ -88,26 +88,26 @@ Remove-Item -Recurse -Force .\artifacts
 New-Item -ItemType Directory -Path data,artifacts
 .venv\Scripts\activate
 
-FULL TEST (lần 1)
+#### FULL TEST (lần 1)
 python -m pytest -q
 
-Kill python lần nữa
+#### Kill python lần nữa
 taskkill /F /IM python.exe
 
-Dọn sạch dữ liệu/logs
+#### Dọn sạch dữ liệu/logs
 Remove-Item -Recurse -Force .\data
 Remove-Item node-*.log -Force
 Remove-Item -Recurse -Force .\artifacts
 New-Item -ItemType Directory -Path data,artifacts
 
-Chạy DURABILITY (lần 2)
+#### Chạy DURABILITY (lần 2)
 python -m pytest tests/test_durability.py::test_durability -q
 
-Test pBFT
+#### Test pBFT
 python start_pbft_cluster.py
 pytest -q test_pbft.py
 
-Khi test thất bại, kiểm tra artifacts/ và node-*.log để phân tích
+#### Khi test thất bại, kiểm tra artifacts/ và node-*.log để phân tích
 
 ### 4. Cấu trúc thư mục
 
