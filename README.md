@@ -5,7 +5,7 @@ Dự án này mô phỏng một cụm RAFT 5 node (mỗi node chạy riêng mộ
 
 # Lab01Blockchain – Lệnh & Scripts
 
-```powershell
+
 # 1. Yêu cầu & chuẩn bị môi trường (Windows)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
