@@ -1,38 +1,5 @@
 # Lab01Blockchain
 
-## Hướng dẫn sử dụng (Tiếng Việt)
-
-
-1️⃣ Vào thư mục
-cd C:\Users\ADMIN\Documents\GitHub\texta\Lab01Blockchain
-
-2️⃣ Kill toàn bộ python + port
-taskkill /F /IM python.exe
-
-3️⃣ Dọn sạch dữ liệu
-rmdir /S /Q logs
-rmdir /S /Q artifacts
-mkdir logs
-mkdir artifacts
-
-4️⃣ Active venv
-.venv\Scripts\activate
-
-5️⃣ Chạy FULL TEST (lần 1)
-python -m pytest -q
-
-6️⃣ Kill python lần nữa
-taskkill /F /IM python.exe
-
-7️⃣ Dọn sạch lại
-rmdir /S /Q logs
-rmdir /S /Q artifacts
-mkdir logs
-mkdir artifacts
-
-8️⃣ Chạy DURABILITY (lần 2)
-python -m pytest tests/test_durability.py::test_durability -q
-
 ### 1. Tổng quan
 Dự án này mô phỏng một cụm RAFT 5 node (mỗi node chạy riêng một process) dùng **gRPC** để trao đổi RPC. Mục tiêu: triển khai leader election, log replication, commit bằng đa số và kiểm tra tính bền vững (durability) khi restart.
 
@@ -363,11 +330,9 @@ Dưới đây là danh sách **các file/ thư mục** chính trong repository v
 
 ```text
 LAB01BLOCKCHAIN/
-├── proto/                  
+├── proto/           
 ├── scripts/                
-├── tests/                  
-├── artifacts/              
-├── data/                   
+├── tests/                                                
 ├── tools/                  
 │
 ├── pbft_*.py               
@@ -382,16 +347,17 @@ LAB01BLOCKCHAIN/
 │   └── raft_service.py     
 │
 ├── start_*.py              
-│   ├── start_cluster.py    
+│   ├── start_cluster.py   
+│   ├── start_node.py   
 │   ├── start_pbft_cluster.py 
 │   └── start_cluster_stagger.py 
 │
 ├── run_*.py                
 │   ├── run_node.py         
-│   └── run_smoke.py        
+│   ├── run_smoke.py 
+│   └── run_pbft_node.py         
 │
 ├── config.py               
 ├── kv_store.py             
-├── probe_state.py          
-├── node-x.log              
+├── probe_state.py                       
 └── README.md               
