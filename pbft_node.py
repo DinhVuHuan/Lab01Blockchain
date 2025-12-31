@@ -3,6 +3,7 @@ from typing import Any, List, Set
 
 from pbft_message import PRE_PREPARE, PREPARE, COMMIT, PBFTMessage
 
+
 class PBFTNode:
     """PBFT protocol node (supports primary, byzantine, and durability tests)."""
 
