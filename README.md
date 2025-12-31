@@ -112,6 +112,7 @@ Khi test thất bại, kiểm tra artifacts/ và node-*.log để phân tích
 ### 4. Cấu trúc thư mục
 
 LAB01BLOCKCHAIN/
+
 ├── proto/           
 ├── scripts/                
 ├── tests/                                                
