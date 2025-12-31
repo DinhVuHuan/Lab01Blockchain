@@ -11,9 +11,11 @@ class PBFTMessage:
     """Lightweight PBFT protocol message wrapper."""
 
     def __init__(self, msg_type: str, block: Any, sender: int) -> None:
-        self.type: str = msg_type
-        self.block: Any = block
-        self.sender: int = sender
+        self.type = msg_type
+        self.block = block
+        self.sender = sender
+        self.height = block.height
+        self.hash = block.hash
 
     def __repr__(self) -> str:
         return f"PBFTMessage(type={self.type}, height={getattr(self.block, 'height', '?')}, sender={self.sender})"
