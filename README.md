@@ -105,7 +105,7 @@ python -m pytest tests/test_durability.py::test_durability -q
 
 #### Test pBFT
 python start_pbft_cluster.py
-pytest -q test_pbft.py
+python -m pytest -q tests/test_pbft.py
 
 #### Khi test thất bại, kiểm tra artifacts/ và node-*.log để phân tích
 
