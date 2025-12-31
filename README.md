@@ -4,209 +4,124 @@
 Dự án này mô phỏng một cụm RAFT 5 node (mỗi node chạy riêng một process) dùng **gRPC** để trao đổi RPC. Mục tiêu: triển khai leader election, log replication, commit bằng đa số và kiểm tra tính bền vững (durability) khi restart.
 
 ---
-
-### 2. Chuẩn bị môi trường (Windows — cmd / PowerShell / VS Code Terminal)
-
-- Tạo và kích hoạt virtual environment:
-  - PowerShell:
-    ```powershell
-    python -m venv .venv
-    .\.venv\Scripts\Activate.ps1
-    ```
-  - cmd:
-    ```cmd
-    python -m venv .venv
-    .\.venv\Scripts\activate.bat
-    ```
-  - VS Code: mở Terminal (PowerShell hoặc cmd) và chạy các lệnh trên.
-
-- Cài dependencies:
-  ```bash
-  pip install -r requirements.txt
-  # Nếu không có file requirements.txt: pip install grpcio grpcio-tools pytest
-  ```
-
----
-
-### 3. Chạy chương trình
-
-- Chạy **một node** (có thể dùng `run_node.py` để tự gán NODE_ID hoặc đặt biến môi trường):
-  - PowerShell:
-    ```powershell
-    $env:NODE_ID = 1
-    python run_node.py
-    ```
-  - cmd:
-    ```cmd
-    set NODE_ID=1
-    python run_node.py
-    ```
-  - Hoặc dùng `start_node.py` (không cần gán biến môi trường):
-    ```bash
-    python start_node.py 1
-    ```
-
-- Khởi **cụm 5 node** (script sẽ kiểm tra port trống trước khi start):
-  ```bash
-  python start_cluster.py
-  ```
-  - Nếu bạn đang debug local và cần bỏ qua kiểm tra port: `python start_cluster.py --force` (chỉ dùng khi bạn chắc chắn không lo ngại xung đột port).
-
-- Gửi lệnh tới cluster (CLI client):
-  ```bash
-  python raft_client.py set mykey 123
-  # hoặc (backwards-compatible): python raft_cilent.py set mykey 123
-  ```
-  - CLI hỗ trợ lệnh nhiều thành phần (multi-word).
-  - Exit code: `0` = thành công, `1` = thất bại.
-
----
-
-### 4. Endpoints quản trị & debug (HTTP)
-Mỗi node cũng chạy một HTTP status server (port = gRPC_port + 1000). Ví dụ node chạy gRPC tại `127.0.0.1:5001` sẽ có status tại `http://127.0.0.1:6001/state`.
-
-- GET `/state` — xem `role`, `leader_id`, `term`, `log_len`, `commit_index`, `kv_snapshot`, `blackholed_peers`.
-- GET `/admin/disconnect?peers=ID1,ID2` — mô phỏng phân mảnh: node sẽ 'blackhole' các peer chỉ định.
-- GET `/admin/reconnect?peers=ID1,ID2` — bỏ blackhole.
-- GET `/admin/clear` — xóa tất cả blackholes.
-- GET `/admin/shutdown` — shutdown node.
-- GET `/admin/setterm?term=NN` — đặt term cho node (dùng để test tình huống bất thường).
-
-Ví dụ (PowerShell):
-```powershell
-Invoke-RestMethod http://127.0.0.1:6001/state
-Invoke-RestMethod "http://127.0.0.1:6001/admin/disconnect?peers=2,3"
-```
-
----
-
-### 5. Các test và cách chạy chúng ✅
-- Chạy toàn bộ test suite (pytest):
-  ```bash
-  python -m pytest -q
-  ```
-- Chạy riêng test durability (kịch bản start → commit → kill → restart → verify):
-  ```bash
-  python -m pytest tests/test_durability.py::test_durability -q
-  ```
-- Test CLI (ví dụ):
-  ```bash
-  python -m pytest tests/test_cli.py::test_raft_cilent_cli_multword -q
-  ```
-- Chạy pBFT:
-  ```
-  python start_pbft_cluster.py 
-  ```
-
-Ghi chú: Trước khi chạy `tests/test_durability.py`, đảm bảo không có tiến trình khác đang dùng các port mặc định (5001..5005 và 6001..6005). Sử dụng `python tools/check_ports.py` để kiểm tra port.
-
----
-
-### 6. Những gì đã được triển khai (tóm tắt)
-- Mạng 5 node chạy độc lập (process) với gRPC.
-- RAFT core:
-  - RequestVote, AppendEntries, leader election, heartbeat.
-  - Log replication với probe/repair, commit by majority.
-  - Leader-only `ClientAppend` RPC (tối ưu cho client requests) và AppendEntries fallback.
-- Persistence: KV store file-backed (atomic write) — dùng để kiểm thử durability.
-- Admin HTTP endpoints cho testing (state, disconnect, reconnect, shutdown, setterm).
-- Tests: unit tests, functional tests, durability test integrated into pytest.
-- CI: workflow có kiểm tra port preflight và chạy тестs + durability in integration job.
-
-**Chưa làm (nâng cao):** pBFT (điểm cộng) — có thiết kế và test‑plan trong báo cáo nhưng chưa có mã thực thi.
-
----
-
-### 7. Debug, preflight và các thao tác chuẩn trước khi test (rõ ràng hơn)
-
-#### A. Kiểm tra port và dọn sạch tiến trình chiếm port (preflight)
-Trước khi chạy `start_cluster.py` hoặc `tests/test_durability.py`, **bắt buộc** đảm bảo các port mặc định (gRPC: 5001..5005 và HTTP status: 6001..6005) đang trống.
-
-- Kiểm tra port bằng script có sẵn:
-  ```bash
+1. Yêu cầu & chuẩn bị môi trường (Windows)
+Python 3.11 (recommend) và pip.
+Tạo virtual environment và kích hoạt (PowerShell)
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+Cài dependencies:
+  pip install grpcio grpcio-tools pytest
+Dọn dữ liệu/logs (nên làm trước khi chạy test durability):
+  Remove-Item -Recurse -Force .\data
+  Remove-Item node-*.log -Force
+  Remove-Item -Recurse -Force .\artifacts
+  New-Item -ItemType Directory -Path data,artifacts
+(Nếu xài CMD thì chạy lệnh: rmdir /S /Q logs rmdir /S /Q artifacts mkdir logs mkdir artifacts)
+2. Kiểm tra port (bắt buộc trước khi start cluster trên CI)
+Project sử dụng các port gRPC mặc định 5001..5005 và HTTP status 6001..6005.
+Chạy script kiểm tra port:
   python tools/check_ports.py
-  ```
-  Script sẽ liệt kê các port đang bận và PID (nếu có).
-
-- Nếu port bị chiếm, kill tiến trình đó (Windows):
-  - Tìm PID (từ script ở trên) rồi kill:
-    ```cmd
-    taskkill /PID <pid> /F
-    ```
-  - Hoặc PowerShell:
-    ```powershell
-    Stop-Process -Id <pid> -Force
-    ```
-
-- Lưu ý: tránh dùng `taskkill /F /IM python.exe` trừ khi bạn muốn dừng tất cả tiến trình Python đang chạy (có thể kill nhầm test runner).
-
-- Nếu bạn chỉ muốn nhanh (chỉ khuyến nghị cho debug local), bạn có thể bỏ qua kiểm tra preflight bằng `python start_cluster.py --force`, nhưng **không dùng** trên CI.
-
-
-#### B. Vị trí file logs và những log quan trọng cần kiểm tra
-- Vị trí file logs: các file log được tạo trong **thư mục project root** với tên `node-1.log`, `node-2.log`, … (stdout/stderr của từng node).
-- Các log bạn nên kiểm tra khi debug:
-  - Các thông báo bầu leader: `ELECTED LEADER` hoặc `[Node X] -> CANDIDATE` / `-> FOLLOWER`.
-  - AppendEntries/ClientAppend: các message về replicate attempts, resp.success, resp.term và các ngoại lệ trong handler (stacktrace được ghi vào node-*.log).
-  - Commit messages: thông báo `Entry committed at index` và lệnh đã bị commit.
-  - Replication errors / probe messages: thông báo `replicate_to_peer` / `probe` logs để hiểu mismatch hoặc retry.
-
-#### C. Cách start nhiều node cùng lúc (manual vs script)
-- Cách đơn giản (script quản lý background processes):
-  ```bash
+Nếu có port bị chiếm, kill tiến trình tương ứng (Windows):
+  taskkill /PID <pid> /F
+Ghi chú: `start_cluster.py` thực hiện preflight kiểm tra port; dùng `--force` để bỏ kiểm tra (chỉ dùng debug local).
+3. Cách start node và cụm node
+Start một node trong process riêng (recommended):
+  python start_node.py 1
+Start toàn bộ cluster (mặc định 5 node) bằng script orchestrator (mỗi node là process riêng):
   python start_cluster.py
-  ```
-  Script này sẽ khởi 5 process (với PIDs được in ra). Chỉ cần có 1 terminal.
+  # Bỏ preflight port check (debug local):
+  python start_cluster.py --force
+Chạy nhiều node trong cùng một process (phục vụ phát triển):
+  python run_node.py
+Dừng tất cả node (script helper):
+  python tools/stop_all_nodes.py
+4. Kiểm tra trạng thái node & admin endpoints (HTTP)
+Mỗi node chạy một HTTP status server tại gRPC_port + 1000. Ví dụ node gRPC 127.0.0.1:5001 -> status http://127.0.0.1:6001/state.
+Các endpoint hữu dụng (được implement trong RaftNode.start_status_server):
+GET /state — trả JSON gồm: role, leader_id, term, log_len, commit_index, last_applied, blackholed_peers, kv_snapshot, next_index, match_index, replication_errors.
+GET	/admin/disconnect?peers=ID1,ID2 — node sẽ thêm peer vào blackholed_peers và bỏ qua replicate tới peer đó.
+GET	/admin/reconnect?peers=ID1,ID2 — loại peer khỏi blackholed_peers.
+GET	/admin/clear — xóa mọi blackhole.
+GET	/admin/shutdown — tắt node (gọi graceful stop).
+GET	/admin/setterm?term=NN — đặt current_term (bị giới hạn: từ chối giá trị lớn quá >=1000).
+Ví dụ PowerShell:
+Invoke-RestMethod "http://127.0.0.1:6001/state"
+Invoke-RestMethod "http://127.0.0.1:6001/admin/disconnect?peers=2,3"
+Invoke-RestMethod "http://127.0.0.1:6001/admin/reconnect?peers=2,3"
+Invoke-RestMethod "http://127.0.0.1:6001/admin/shutdown"
+5. Gửi lệnh từ client
+Dùng client CLI wrapper:
+python raft_client.py set mykey 123
+  # hoặc (hỗ trợ tên file cũ):
+  python raft_cilent.py set mykey 123
+Hàm chủ chốt gửi lệnh: raft_client.send_command(command, max_attempts=3, backoff=0.5).
+send_command thực hiện find_leader() (dùng /state) rồi gọi ClientAppend RPC (fallback AppendEntries nếu server trả UNIMPLEMENTED).
+6. Cách thay đổi số node / ports / topology
+Mở file cấu hình: [config.py](config.py)
+Sửa NODES (dict) theo định dạng node_id: "host:port" (ví dụ thêm 6: "127.0.0.1:5006").
+NUM_NODES, ALL_NODES và MAJORITY được tính tự động từ NODES.
+Sau khi chỉnh NODES:
+Đảm bảo các port mới không trùng (dùng tools/check_ports.py).
+Restart toàn cluster (kill tiến trình cũ, sau đó python start_cluster.py).
+Lưu ý: code hiện tại giả định các node id là liên tiếp 1..N ở nhiều script; nếu thay đổi phức tạp hơn (ví dụ id không liên tiếp), kiểm tra `start_cluster.py` và `tests` để đảm bảo tương thích.
+7. Mô phỏng lỗi / nút độc hại (Byzantine)
+Partition / blackhole: dùng /admin/disconnect trên node A để khiến node A bỏ replicate tới một số peer. Việc này mô phỏng mất kết nối một chiều.
+Shutdown node: /admin/shutdown hoặc kill PID.
+Ép term để kích thích election: /admin/setterm?term=NN.
+pBFT demo (mô phỏng Byzantine node):
+File demo: run_pbft_node.py (tạo PBFTNode với byzantine=(i == 3) trong ví dụ).
+Để thay node gian lận, sửa run_pbft_node.py hoặc pbft_node.py.
+8. Persistence & durability
+KV store file-backed: mỗi node lưu dữ liệu ở data/node_<ID>.json bằng class KVStore (file: kv_store.py).
+Hàm: KVStore.set(key, value) và KVStore.get(key).
+Durability test (kịch bản test sẵn có): [tests/test_durability.py](tests/test_durability.py)
+Mô tả: start cluster, gửi set dur_key 42, kill PIDs, restart cluster, kiểm tra dur_key tồn tại trong kv_snapshot trả bởi /state.
+Chạy bằng:
+python -m pytest tests/test_durability.py::test_durability -q
+9. File log & artifacts
+Logs của node khi start bằng start_node.py: node-1.log, node-2.log, ...
+Khi test thất bại, tests/test_durability.py có helper dump_logs() để copy logs vào artifacts/<timestamp>_reason/.
+10. Các bước chạy cụ thể (step-by-step)
+Mở PowerShell, di chuyển vào thư mục project.
+Tạo và kích hoạt venv (như ở mục 1).
+(CI) Chạy python tools/check_ports.py để đảm bảo các port 5001..5005 và 6001..6005 trống.
+Khởi cụm 5 node:
+  python start_cluster.py
+Hoặc start 1 node để debug:
+  python start_node.py 1
+Xác minh trạng thái node (ví dụ node 1):
+  Invoke-RestMethod "http://127.0.0.1:6001/state"
+Gửi lệnh ví dụ:
+  python raft_client.py set example 100
+Kiểm tra kv_snapshot trong /state của các node để xác nhận commit.
+Mô phỏng fault: tắt leader bằng /admin/shutdown hoặc blackhole follower bằng /admin/disconnect.
+Chạy test tổng quát, chạy test durability và pBFT:
+Mở terminal (Powershell/CMD) mới và cd vào thư mục chứa đồ án
+Kill toàn bộ python và port còn dư: taskkill /F /IM python.exe
+Dọn dữ liệu/logs:
+  Remove-Item -Recurse -Force .\data
+  Remove-Item node-*.log -Force
+  Remove-Item -Recurse -Force .\artifacts
+  New-Item -ItemType Directory -Path data,artifacts
+(Nếu xài CMD thì chạy lệnh: rmdir /S /Q logs rmdir /S /Q artifacts mkdir logs mkdir artifacts)
+Kích hoạt môi trường: .venv\Scripts\activate
+Chạy FULL TEST (lần 1) python -m pytest -q
+Kill python lần nữa taskkill /F /IM python.exe
+Dọn sạch lại dữ liệu/logs:
+  Remove-Item -Recurse -Force .\data
+  Remove-Item node-*.log -Force
+  Remove-Item -Recurse -Force .\artifacts
+  New-Item -ItemType Directory -Path data,artifacts
+(Nếu xài CMD thì chạy lệnh: rmdir /S /Q logs rmdir /S /Q artifacts mkdir logs mkdir artifacts)
+Chạy DURABILITY (lần 2)
+python -m pytest tests/test_durability.py::test_durability -q
+Test pBFT:
+python start_pbft_cluster.py 
+pytest -q test_pbft.py
+Khi test thất bại, kiểm tra artifacts/ và node-*.log để phân tích.
 
-- Chạy thủ công (mỗi node 1 terminal):
-  - Mở nhiều terminal (PowerShell / cmd / VS Code Terminal), mỗi terminal đặt NODE_ID khác nhau rồi chạy:
-    ```powershell
-    $env:NODE_ID = 1
-    python run_node.py
-    ```
-    terminal thứ 2:
-    ```powershell
-    $env:NODE_ID = 2
-    python run_node.py
-    ```
-  - Hoặc dùng `start_node.py` để khởi từng node: `python start_node.py 1` (mỗi terminal một command).
 
-- Chạy background trên Windows (CMD):
-  ```cmd
-  start "Node1" cmd /k "set NODE_ID=1 && python run_node.py"
-  ```
-  (mỗi lệnh `start` sẽ mở một cửa sổ terminal mới và giữ tiến trình chạy)
-
-#### D. Các tham số cấu hình quan trọng và cách điều chỉnh
-Các tham số nằm trong `config.py` ảnh hưởng đến tính ổn định/độ tin cậy trong test:
-- `ELECTION_TIMEOUT_MIN` và `ELECTION_TIMEOUT_MAX` (giây):
-  - Quyết định thời gian timeout cho election. Nếu quá nhỏ -> khả năng split-vote cao; nếu quá lớn -> re-election chậm.
-  - Đã đặt mặc định hơi lớn hơn để giảm split-election trong CI: (ví dụ 1.5 / 3.0).
-- `HEARTBEAT_INTERVAL` (giây):
-  - Tần suất leader gửi heartbeat. Giá trị nhỏ giúp phát hiện nhanh thất bại nhưng tăng overhead.
-
-Thay đổi: chỉnh trực tiếp trong `config.py` và restart node(s) để áp dụng.
-
-#### E. Reset cluster / Cleanup trước khi rerun test
-Trước khi chạy lại durability test, nên xóa dữ liệu cũ và logs để tránh chạy trên trạng thái còn sót:
-- Xóa thư mục dữ liệu (KV store):
-  - cmd:
-    ```cmd
-    rmdir /S /Q data
-    del node-*.log
-    ```
-  - PowerShell:
-    ```powershell
-    Remove-Item -Recurse -Force .\data
-    Remove-Item node-*.log -Force
-    ```
-- Xác minh port trống: `python tools/check_ports.py`.
-- Sau cleanup, khởi `start_cluster.py` rồi chạy `tests/test_durability.py`.
-
----
-
-### 8. Tài liệu chi tiết các file & hàm (File reference) 🔎
-Dưới đây là danh sách **các file/ thư mục** chính trong repository và mô tả ngắn về **mục đích** cùng các hàm/ class quan trọng để giúp bạn nắm nhanh cấu trúc dự án.
+### 8. Tài liệu chi tiết các file & hàm (File reference) 
 
 - `config.py`  
   - Mục đích: cấu hình cluster (danh sách node, quorum) và các hằng thời gian RAFT (election timeout, heartbeat interval).  
