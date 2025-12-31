@@ -5,12 +5,12 @@ from typing import Any
 class Block:
     """Minimal immutable block for PBFT durability tests."""
 
-    def __init__(self, height: int, prev_hash: str) -> None:
+    def __init__(self, height: int, prev_hash: str, override_hash=None) -> None:
         self.height: int = height
         self.prev_hash: str = prev_hash
-        self.hash: str = self._compute_hash()
+        self.hash = override_hash if override_hash else self.compute_hash()
 
-    def _compute_hash(self) -> str:
+    def compute_hash(self) -> str:
         payload = f"{self.height}{self.prev_hash}".encode()
         return hashlib.sha256(payload).hexdigest()
 
