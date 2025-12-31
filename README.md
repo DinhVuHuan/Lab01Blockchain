@@ -110,10 +110,9 @@ pytest -q test_pbft.py
 #### Khi test thất bại, kiểm tra artifacts/ và node-*.log để phân tích
 
 ### 4. Cấu trúc thư mục
-
+```text
 LAB01BLOCKCHAIN/
 
-LAB01BLOCKCHAIN/
 ├── proto/                  # Thư mục chứa các file .proto
 ├── scripts/                # Các script hỗ trợ
 ├── tests/                  # Unit test & test durability/pBFT
