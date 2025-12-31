@@ -8,7 +8,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install grpcio grpcio-tools pytest
 
-# Dọn dữ liệu/logs
+### Dọn dữ liệu/logs
 Remove-Item -Recurse -Force .\data
 Remove-Item node-*.log -Force
 Remove-Item -Recurse -Force .\artifacts
