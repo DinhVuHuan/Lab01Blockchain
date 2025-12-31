@@ -113,34 +113,35 @@ pytest -q test_pbft.py
 
 LAB01BLOCKCHAIN/
 
-├── proto/           
-├── scripts/                
-├── tests/                                                
-├── tools/                  
+LAB01BLOCKCHAIN/
+├── proto/                  # Thư mục chứa các file .proto
+├── scripts/                # Các script hỗ trợ
+├── tests/                  # Unit test & test durability/pBFT
+├── tools/                  # Các tool kiểm tra port, dọn logs, stop nodes
 │
-├── pbft_*.py               
+├── pbft_*.py/              # Các module liên quan pBFT
 │   ├── pbft_block.py       
 │   ├── pbft_message.py     
 │   └── pbft_node.py        
 │
-├── raft_*.py               
+├── raft_*.py/              # Các module liên quan RAFT
 │   ├── raft_node.py        
 │   ├── raft_client.py      
 │   ├── raft_state.py       
 │   └── raft_service.py     
 │
-├── start_*.py              
+├── start_*.py/             # Scripts start node/cluster
 │   ├── start_cluster.py   
 │   ├── start_node.py   
 │   ├── start_pbft_cluster.py 
 │   └── start_cluster_stagger.py 
 │
-├── run_*.py                
+├── run_*.py/               # Scripts chạy node/pBFT/debug
 │   ├── run_node.py         
 │   ├── run_smoke.py 
 │   └── run_pbft_node.py         
 │
-├── config.py               
-├── kv_store.py             
-├── probe_state.py                       
-└── README.md               
+├── config.py               # Cấu hình nodes, ports
+├── kv_store.py             # Lưu trữ KV file-backed
+├── probe_state.py          # Truy vấn trạng thái node
+└── README.md               # Hướng dẫn & mô tả project
